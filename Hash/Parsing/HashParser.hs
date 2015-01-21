@@ -109,7 +109,7 @@ parseCmd = try assign <|> realCmd
 assign :: Parser Cmd 
 assign = do
     spaces
-    var1 <- strExpr
+    var1 <- varExp
     char '='
     val1 <- parseExpr
     spaces
@@ -139,7 +139,6 @@ realCmd = do
 -- Handling redirects
 handleRedirects :: [Expr] -> ( [Expr], Maybe Expr, Maybe Expr, Bool)
 handleRedirects args = outRedir $ inRedir args
-    
 
 rmvIndexes :: [a] -> Int -> Int -> [a]
 rmvIndexes list arg1 arg2 = map snd $ filter (\x -> fst x /= arg1 && fst x /= arg2) $ indL
@@ -154,8 +153,8 @@ outRedir :: (Maybe Expr, [Expr]) -> ( [Expr], Maybe Expr, Maybe Expr, Bool)
 outRedir (inRedir, args) = case findIndices (== Str ">") args of
                               [] -> case findIndices (== Str ">>") args of
                                       [] -> (args, Nothing, inRedir, False)
-                                      a  -> (rmvIndexes args (last a) (last a + 1), Just $ args !! (last a + 1), inRedir, True)
-                              a  -> (rmvIndexes args (last a) (last a + 1), Just $ args !! (last a + 1), inRedir, False)
+                                      a  -> (rmvIndexes args (last a) (last a + 1), inRedir, Just $ args !! (last a + 1) , True)
+                              a  -> (rmvIndexes args (last a) (last a + 1), inRedir, Just $ args !! (last a + 1) , False)
                               
 
                               
