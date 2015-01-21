@@ -6,20 +6,20 @@ The task of this project is to implement **Hash**, a simple shell programmed in 
 
 
 ### Milestones
-- [ ] Basic language structures defined
-- [ ] Structure execution
-- [ ] Parsing
-- [ ] Basic Functionality (*80 %*)
-    - [ ] Abstracted command calling (*2 pts*)
-    - [ ] Conditional branching (*6 pts*)
-    - [ ] File manipulation (*3 pts*)
-    - [ ] Directory manipulation (*3 pts*)
-    - [ ] Filesystem navigation (*3 pts*)
-    - [ ] Stream redirection (*5 pts*)
-    - [ ] Comments (*2 pts*)
-    - [ ] Variables (*3 pts*)
-    - [ ] `cat` command (*2 pts*)
-    - [ ] `ls` command (*3 pts*)
+- [x] Basic language structures defined
+- [x] Structure execution
+- [x] Parsing
+- [x] Basic Functionality (*80 %*)
+    - [x] Abstracted command calling (*2 pts*)
+    - [x] Conditional branching (*6 pts*)
+    - [x] File manipulation (*3 pts*)
+    - [x] Directory manipulation (*3 pts*)
+    - [x] Filesystem navigation (*3 pts*)
+    - [x] Stream redirection (*5 pts*)
+    - [x] Comments (*2 pts*)
+    - [x] Variables (*3 pts*)
+    - [x] `cat` command (*2 pts*)
+    - [x] `ls` command (*3 pts*)
 - [ ] Advanced functionality (*20% for 10 pts*)
     - [ ] `grep` (*4 pts*)
     - [ ] Piping (*5 pts*)

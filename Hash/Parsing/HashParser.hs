@@ -218,6 +218,27 @@ exprFromFile fp = parseFromFile (sepBy parseExpr (many $ char ' ' <|> char '\t')
 tLExprsFromFile :: String -> IO (Either ParseError [TLExpr])
 tLExprsFromFile fp = parseFromFile (many $ skipMany parseComment >> parseTLExpr <* skipMany parseComment) fp
 
+parseTLExprsFromFile :: FilePath -> [String] -> IO [TLExpr]
+parseTLExprsFromFile fp args = do
+    con <- readFile fp --open the file 
+    let fline = head $ lines con --take the first line
+    let vars = parse (endBy varExp spaces) "variables" fline 
+    let (takesVars, varExprsList) = case vars of 
+                     Left _  -> (False, [])
+                     Right xs -> (True,  xs)
+    let body = case takesVars of
+                True  -> unlines $ tail $ lines con
+                False -> con
+    let extraTL = case takesVars of
+                True  -> map (\(v,arg) -> TLCmd $ Assign {var = v, val = Str arg} ) $ zip varExprsList args
+                False -> []
+    let ret = parse readTLExprAndComments "read script" body
+    return $ case ret of
+         Left  e -> error "Malformed script!"
+         Right tls -> extraTL ++ tls
+    
+readTLExprAndComments = endBy parseTLExpr spaces
+
 -- Parses out comments 
 -- comments are strings that begin with #
 

@@ -3,6 +3,8 @@
 
 module Hash.Hash where
 
+import Prelude hiding (catch) 
+import Control.Exception
 import Hash.Language.Exec 
 import Hash.Language.Expressions
 import Hash.Parsing.HashParser
@@ -14,13 +16,10 @@ import qualified Data.Map as M
 
 
 -- Reads a .hash script and runs it
-runScript :: FilePath -> IO ()
-runScript fp = do
-    eitherLtlexpr <- tLExprsFromFile fp
-    let ltlexpr = case eitherLtlexpr of
-         Left err -> error "Script not formatted correctly"
-         Right xs -> xs
-    runHashProgram commands (Left ".") ltlexpr
+runScript :: FilePath -> [String] -> IO ()
+runScript fp args = do
+    ltlexpr <- catch (parseTLExprsFromFile fp args) $ catchParseExp
+    catch (runHashProgram commands (Left ".") ltlexpr) $ catchErr (ScriptState {output="", wd="", vartable = M.empty}) "Invalid usage of functions"
     return ()
     
 -- Communicates with the user and performs hash commands line by line
@@ -45,8 +44,14 @@ parseLine sstate = do
   let parsed = parse parseTLExpr "Interactive" cont
   case parsed of
          Left err -> do
-           putStrLn "Error: incorrect syntax"
-           return sstate
+           putStrLn "Error: invalid syntax"
+           return sstate              
          Right a  -> do
-           newstate <- runHashProgram commands (Right sstate) [a] 
+           newstate <- catch (runHashProgram commands (Right sstate) [a] ) $ catchErr sstate "Invalid usage"
            return newstate
+           
+catchParseExp :: SomeException -> IO [TLExpr]
+catchParseExp e = putStrLn "Invalid script syntax" >> return []  
+
+catchErr :: ScriptState -> String -> SomeException -> IO ScriptState
+catchErr sstate message _= putStrLn message >> return sstate

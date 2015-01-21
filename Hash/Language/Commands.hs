@@ -96,7 +96,7 @@ cp srcs sstate = do
 rm :: Command
 rm [] _ = error "rm: No arguments given to rm"
 rm srcs sstate = do
-    mapM removeFile scrs
+    mapM removeFile srcs
     return $ sstate { output = ""}
     
 --Creates one or more empty files

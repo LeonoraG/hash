@@ -3,6 +3,7 @@ module Hash.Language.Exec where
 import Hash.Language.Expressions
 import Hash.Parsing.HashParser
 
+import Control.Exception
 import qualified Data.Map as M
 import Data.Maybe
 import System.IO
@@ -12,6 +13,7 @@ import Hash.Language.Expressions
 import Text.ParserCombinators.Parsec
 import Control.Applicative ( (<$>), (<*>), (<*) )
 import Data.List
+import Prelude hiding (catch) 
 
 -- A model of a command which is waiting for arguments and a state to run
 type Command  = [String] -> ScriptState -> IO ScriptState
@@ -20,7 +22,7 @@ type Command  = [String] -> ScriptState -> IO ScriptState
 type VarTable = M.Map String String
 
 -- A command table - abstracted command execution, (contains command name,
--- command) pairs. Simplest, but hardly the best way to implement this.
+-- command) pairs.
 type CommandTable = M.Map String Command
 
 -- A script state containing the last output, current working directory and
@@ -105,10 +107,15 @@ evalAssign asgn sstate =
 evalFp :: Expr -> ScriptState -> FilePath
 evalFp expr sstate = evalExpr expr (vartable sstate)
 
--- every Command takes a [String] as it's first argument
--- this function will append arguments from the file, 
---if in redirection was enabled, and append two arguments that notify the 
---function it should redirect it's output
+-- For catching unknown command error
+
+
+catchUnknownComm :: ScriptState ->  SomeException -> IO ScriptState
+catchUnknownComm sstate e = do
+    putStrLn $ show e  
+    return sstate
+    
+-- Evaluates a non-assingment command
 
 evalrealCmd :: CommandTable -> ScriptState -> Cmd -> IO ScriptState
 evalrealCmd ctable sstate cmd = do
@@ -127,7 +134,7 @@ evalrealCmd ctable sstate cmd = do
                                      else return []
     let fargsEvaluated = map (`evalExpr` vtable ) fargs
     let finalArgs = (map (`evalExpr` vtable ) $ args cmd) ++ fargsEvaluated
-    newsstate <- ourCommand finalArgs sstate
+    newsstate <- catch (ourCommand finalArgs sstate) $ catchUnknownComm (sstate{output =""}) 
     let retOut = outDir cmd
     case retOut of
          Nothing -> putStr (output newsstate)
