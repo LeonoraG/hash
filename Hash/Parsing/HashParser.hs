@@ -1,225 +1,226 @@
 -- Contains the parsers that take a string and produce an executable list of
--- TLExpr constructs. 
+-- TLExpr constructs.
 
- module Hash.Parsing.HashParser where
- 
-import Text.ParserCombinators.Parsec
-import System.Environment
+module Hash.Parsing.HashParser where
+
 import Control.Monad
-import Control.Applicative ((<$>), (<$), (<*>), (<*), (*>), Applicative)
+import Control.Applicative ( (<$>), (<*>), (<*), (*>) )
+import Data.List
 import Hash.Language.Expressions
+import Text.ParserCombinators.Parsec
 
-
-err = "An error has occurred"
-
-cmndParse :: Parser a -> String -> Either ParseError a
-cmndParse p = parse p err
-
-
--- Parser for expression
+-- Expr is a bottom-level expression
+-- It can be either a named variable or a string
 
 parseExpr :: Parser Expr
-parseExpr =  parseExprVar <|> parseExprStr
+parseExpr =  try varExp <|> strExpr
 
-parseExprVar :: Parser Expr
-parseExprVar = do
-               char '$'
-               first <- letter
-               rest  <- many alphaNum
-               return $ Var (first:rest)
-             
-parseExprStr :: Parser Expr
-parseExprStr = do        
-    x <- many1 (readEscapedChar <|> readEncloseString <|> many1 (noneOf "\" \\\n\t") )
+-- Using usual syntax for variables : $...
+
+varExp :: Parser Expr
+varExp = do
+    char '$'
+    first <- letter
+    rest  <- many alphaNum
+    return $ Var (first:rest)
+
+-- Tries to read enclosed, then escaped string
+-- If neither of this works, reads many characters that don't contain
+-- some special chars
+
+strExpr :: Parser Expr
+strExpr = do         
+    x <- many1 (escapedChar<|>enclosedString<|>many1 (noneOf "\" \\\n\t;") )
     return $ Str $ concat x
     
-readEncloseString :: Parser String
-readEncloseString = do
+-- For strings between "
+enclosedString :: Parser String
+enclosedString = do
     char '"'
     x <- many (noneOf "\"")
     char '"'
     return x
- 
-readEscapedChar :: Parser String
-readEscapedChar = do
+
+-- For strings that begin with \\
+escapedChar :: Parser String
+escapedChar = do
     char '\\'
     a <- anyChar
     return [a]
-    
--- Parsers for comparison
+ 
+
+-- Comparison parser
 
 parseComp :: Parser Comp
-parseComp = parseSingleC <|> parseC
+parseComp = try compExpr <|> wrappedExpr
 
-parseSingleC :: Parser Comp
-parseSingleC = CLI <$> parseExpr
-
-parseC :: Parser Comp
-parseC = do
-            a <- parseExpr
-            symb <- choice $ fmap (try.string) $ ["==","/=", ">", ">=","<","<=",""] 
-            b <- parseExpr
-            return $ case symb of
-              "==" ->  CEQ a b
-              "/=" ->  CNE a b
-              ">=" ->  CGE a b
-              ">"  ->  CGT a b
-              "<=" ->  CLE a b
-              "<"  ->  CLT a b
-
-              
--- Parsers for predicates
-parsePred :: Parser Pred
-parsePred =  try parseNot <|> try parseAnd <|> try parseOr <|> try parseParens <|> parseSingleP
-
-parseSingleP :: Parser Pred
-parseSingleP = Pred <$> parseComp
-
-parseParens :: Parser Pred
-parseParens = do
-              char '('
-              e <- parsePred
-              char ')'
-              return $ Parens e
-              
-parseNot :: Parser Pred           
-parseNot = do
-           string "Not"
-           p <- parsePred
-           return $ Not p
-           
-parseAnd :: Parser Pred
-parseAnd = do
-           a <- parseParens
-           string "And"
-           b <- parseParens
-           return $ And a b
-           
-parseOr :: Parser Pred
-parseOr = do
-           a <- parseParens
-           string "Or"
-           b <- parseParens
-           return $ Or a b
-          
--- Parser for commands
-
-parseCmnd :: Parser Cmd
-parseCmnd = try parseCmd <|> try parseAsgn <|> try parseCmdRedirIn <|> try parseCmdRedirOut
-
-parseAsgn :: Parser Cmd
-parseAsgn = do
-           spaces
-           var' <- parseExprVar
-           spaces
-           char '='
-           spaces
-           val' <- parseExpr
-           return $ Assign { var = var', val = val'}
+-- When we have a wrapped expression literal
+wrappedExpr :: Parser Comp
+wrappedExpr = liftM CLI $ parseExpr
     
--- Ignoring the redirection
 
-parseCmd :: Parser Cmd
-parseCmd = do
-           spaces
-           fname <- parseExpr
-           spaces
-           arguments <- sepBy parseExpr (many $ char ' ' <|> char '\t')
-           optional $ char '\n'
-           return Cmd { name   = fname 
-                      , args   = arguments 
-                      , inDir  = Nothing 
-                      , outDir = Nothing 
-                      , append = False
-                      }
-                      
- -- Redirected input
- 
-parseCmdRedirIn :: Parser Cmd
-parseCmdRedirIn = do
-           spaces
-           fname <- parseExpr
-           spaces
-           arguments <- sepBy parseExpr (many $ char ' ' <|> char '\t')
-           spaces
-           char '<'
-           path <- parseExpr
-           optional $ char '\n'
-           return Cmd { name   = fname 
-                      , args   = arguments 
-                      , inDir  = Just path
-                      , outDir = Nothing 
-                      , append = False
-                      }
-                      
--- Redirected output
+compExpr :: Parser Comp
+compExpr = do
+    x <- parseExpr
+    operator <-choice $ fmap (try.string) $ ["==","/=", ">", ">=",">","<=",""] 
+    y <- parseExpr
+    return $ case operator of
+              "==" ->  CEQ x y
+              "/=" ->  CNE x y
+              ">=" ->  CGE x y
+              ">"  ->  CGT x y
+              "<=" ->  CLE x y
+              "<"  ->  CLT x y
+              
+-- Parsing predicates
 
-parseCmdRedirOut :: Parser Cmd
-parseCmdRedirOut = do
-           spaces
-           fname <- parseExpr
-           spaces
-           arguments <- sepBy parseExpr (many $ char ' ' <|> char '\t')
-           spaces
-           x <- many (oneOf ">")
-           spaces
-           path <- parseExpr
-           optional $ char '\n'
-           return Cmd { name   = fname 
-                      , args   = arguments 
-                      , inDir  = Nothing 
-                      , outDir = Just path 
-                      , append = x == ">>"
-                      }
+parsePred :: Parser Pred
+parsePred = try parensPred <|> try andOrPred <|> try notPred <|> wrappedComp
 
-                      
+notPred :: Parser Pred
+notPred =  char '!' >> (liftM Not $ parsePred)
 
--- Parsers for conditionals
+andOrPred :: Parser Pred
+andOrPred = do
+    a <- try parensPred <|> wrappedComp
+    symb <- choice $ fmap (try.string) $ ["&&", "||"]
+    b <- try parensPred <|> wrappedComp
+    return $ case symb of
+                  "&&" -> And a b
+                  "||" -> Or  a b
 
-parseCond :: Parser Conditional
-parseCond = try parseIf <|> try parseIfElse
+parensPred :: Parser Pred
+parensPred = do
+  char '(' 
+  a <- parsePred
+  char ')'
+  return $ Parens a
+  
+-- For a wrapped comparison
 
-parseIf :: Parser Conditional
-parseIf = do 
-          string "if"
-          spaces
-          cond' <- parsePred
-          spaces
-          string "then"
-          spaces
-          then' <- sepBy parseCmnd (many $ char ' ')
-          spaces
-          string "fi"
-          return $ If { cond = cond'
-                      , cthen = then'
-                      }
-          
-parseIfElse :: Parser Conditional
-parseIfElse = do
-              string "if"
-              spaces
-              cond' <- parsePred
-              spaces
-              string "then"
-              spaces
-              cthen' <- sepBy parseCmnd (many $ char ' ')
-              spaces
-              string "else"
-              spaces
-              celse' <- sepBy parseCmnd (many $ char ' ')
-              spaces
-              string "fi"
-              return $ IfElse { cond  = cond'
-                              , cthen = cthen' 
-                              , celse = celse'
-                              }
+wrappedComp :: Parser Pred
+wrappedComp = liftM Pred $ parseComp
+  
+-- Commands can be either Cmd or an assingment
 
--- Top level expression parser
+parseCmd = try assign <|> realCmd  
+
+-- Assingns: var1 = val1
+assign :: Parser Cmd 
+assign = do
+    spaces
+    var1 <- strExpr
+    char '='
+    val1 <- parseExpr
+    spaces
+    optional newline
+    return $ Assign { var = var1, val = val1}
+
+-- Real command consists of name and a list of arguments
+-- arguments can be separated by space or tab
+
+realCmd :: Parser Cmd 
+realCmd = do
+    spaces
+    name' <- parseExpr
+    spaces
+    args_ <- sepBy parseExpr (many $ char ' ' <|> tab)
+    spaces
+    let (args', inDir', outDir', append') = handleRedirects args_
+    spaces
+    optional newline
+    return $ Cmd { name   = name'
+                 , args   = args'
+                 , inDir  = inDir'
+                 , outDir = outDir'
+                 , append = append'
+                 }
+   
+-- Handling redirects
+handleRedirects :: [Expr] -> ( [Expr], Maybe Expr, Maybe Expr, Bool)
+handleRedirects args = outRedir $ inRedir args
+    
+
+rmvIndexes :: [a] -> Int -> Int -> [a]
+rmvIndexes list arg1 arg2 = map snd $ filter (\x -> fst x /= arg1 && fst x /= arg2) $ indL
+  where indL = zip [0..] list
+
+inRedir :: [Expr] -> (Maybe Expr, [Expr])
+inRedir args = case findIndices (==Str "<") args of
+                    [] -> (Nothing, args)
+                    a  -> (Just $ args !! (last a + 1), rmvIndexes args (last a) (last a +1) )
+                   
+outRedir :: (Maybe Expr, [Expr]) -> ( [Expr], Maybe Expr, Maybe Expr, Bool)
+outRedir (inRedir, args) = case findIndices (== Str ">") args of
+                              [] -> case findIndices (== Str ">>") args of
+                                      [] -> (args, Nothing, inRedir, False)
+                                      a  -> (rmvIndexes args (last a) (last a + 1), Just $ args !! (last a + 1), inRedir, True)
+                              a  -> (rmvIndexes args (last a) (last a + 1), Just $ args !! (last a + 1), inRedir, False)
+                              
+
+                              
+-- Parses conditional branching expressions :
+-- if-then or if-then- else
+
+-- The syntax is similar to bash:
+-- if [condition]; then [expression]; else [expression]\n ; fi
+-- if [condition]; then [expression]; fi
+
+parseConditional :: Parser Conditional
+parseConditional = try ifThenElse <|> ifThen
+
+ifThen :: Parser Conditional
+ifThen = do
+    spaces
+    string "if"
+    spaces
+    cond' <- parsePred
+    spaces
+    string "; then"
+    optional newline
+    then' <- many (try parseCmd)
+    spaces
+    string "; fi"
+    return $ If { cond  = cond'
+                , cthen = then' 
+                }
+    
+ifThenElse :: Parser Conditional
+ifThenElse = do
+    spaces
+    string "if"   
+    spaces
+    cond' <- parsePred
+    spaces
+    string "; then"  
+    optional newline
+    then' <- many (try parseCmd)    
+    spaces    
+    string "; else"
+    spaces
+    else' <- many (try parseCmd)
+    spaces
+    string "; fi"
+    return $ IfElse { cond  = cond'
+                    , cthen = then'
+                    , celse = else'
+                    }
+
+
+-- Parses a top level expression, which can be either
+-- conditional, or regular command
 
 parseTLExpr :: Parser TLExpr
-parseTLExpr = try isCond <|> isntCond
+parseTLExpr = (TLCnd <$> try parseConditional) <|> (TLCmd <$> try parseCmd)
 
-isCond   = TLCnd <$> parseCond
-isntCond = TLCmd <$> parseCmd
+exprFromFile :: String -> IO (Either ParseError [Expr])
+exprFromFile fp = parseFromFile (sepBy parseExpr (many $ char ' ' <|> char '\t')) fp
 
+tLExprsFromFile :: String -> IO (Either ParseError [TLExpr])
+tLExprsFromFile fp = parseFromFile (many $ skipMany parseComment >> parseTLExpr <* skipMany parseComment) fp
 
+-- Parses out comments 
+-- comments are strings that begin with #
+
+parseComment :: Parser ()
+parseComment =  spaces >> char '#' >> many (noneOf "\n") >> optional newline >> return ()
