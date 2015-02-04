@@ -30,7 +30,7 @@ varExp = do
 
 strExpr :: Parser Expr
 strExpr = do         
-    x <- many1 (escapedChar<|>enclosedString<|>many1 (noneOf "\" \\\n\t;") )
+    x <- many1 (escapedChar<|>enclosedString<|>many1 (noneOf "\" \\\n\t;") ) 
     return $ Str $ concat x
     
 -- For strings between "
@@ -113,7 +113,7 @@ assign = do
     char '='
     val1 <- parseExpr
     spaces
-    optional newline
+    optional $ char ';' 
     return $ Assign { var = var1, val = val1}
 
 -- Real command consists of name and a list of arguments
@@ -128,7 +128,8 @@ realCmd = do
     spaces
     let (args', inDir', outDir', append') = handleRedirects args_
     spaces
-    optional newline
+    --optional newline
+    optional $ char ';' 
     return $ Cmd { name   = name'
                  , args   = args'
                  , inDir  = inDir'
@@ -161,12 +162,13 @@ outRedir (inRedir, args) = case findIndices (== Str ">") args of
 -- Parses conditional branching expressions :
 -- if-then or if-then- else
 
--- The syntax is similar to bash:
--- if [condition]; then [expression]; else [expression]\n ; fi
--- if [condition]; then [expression]; fi
+-- The syntax is following:
+-- ifThenElse: if condition , then expression1;;expression2;, else expression3;;expression4;, fi
+-- ifThen:     if condition , then expression1;;expression2;, fi
 
 parseConditional :: Parser Conditional
 parseConditional = try ifThenElse <|> ifThen
+
 
 ifThen :: Parser Conditional
 ifThen = do
@@ -175,13 +177,12 @@ ifThen = do
     spaces
     cond2 <- parsePred
     spaces
-    string "; then"
-    optional newline
-    then2 <- many (try parseCmd)
+    string ", then"
     spaces
-    string "; fi"
+    then2 <- (try parseCmd) `sepBy` (symbol ';')   
+    string ", fi"                                   
     return $ If { cond  = cond2
-                , cthen = then2 
+                , cthen = then2
                 }
     
 ifThenElse :: Parser Conditional
@@ -191,20 +192,25 @@ ifThenElse = do
     spaces
     cond2 <- parsePred
     spaces
-    string "; then"  
+    string ", then"  
     optional newline
-    then2 <- many (try parseCmd)    
+    then2 <- (try parseCmd) `sepBy` (symbol ';')     
     spaces    
-    string "; else"
+    string ", else"
     spaces
-    else2 <- many (try parseCmd)
+    else2 <- (try parseCmd) `sepBy` (symbol ';') 
     spaces
-    string "; fi"
+    string ", fi"
     return $ IfElse { cond  = cond2
                     , cthen = then2
                     , celse = else2
                     }
+                    
+token' :: Parser a -> Parser a
+token' = (<* spaces)
 
+symbol :: Char -> Parser Char
+symbol = token' . char
 
 -- Parses a top level expression, which can be either
 -- conditional, or regular command
