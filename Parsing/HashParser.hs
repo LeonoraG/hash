@@ -216,7 +216,7 @@ symbol = token' . char
 -- conditional, or regular command
 
 parseTLExpr :: Parser TLExpr
-parseTLExpr = (TLCnd <$> try parseConditional) <|> (TLCmd <$> try parseCmd)
+parseTLExpr =( TLCmd <$> try parseComment) <|> (TLCnd <$> try parseConditional) <|> (TLCmd <$> try parseCmd)
 
 exprFromFile :: String -> IO (Either ParseError [Expr])
 exprFromFile fp = parseFromFile (sepBy parseExpr (many $ char ' ' <|> char '\t')) fp
@@ -245,8 +245,18 @@ parseTLExprsFromFile fp args = do
     
 readTLExprAndComments = endBy parseTLExpr spaces
 
--- Parses out comments 
--- comments are strings that begin with #
+-- Comments are interpreted as "empty" commands that do nothing
 
-parseComment :: Parser ()
-parseComment =  spaces >> char '#' >> many (noneOf "\n") >> optional newline >> return ()
+parseComment :: Parser Cmd 
+parseComment = do
+            spaces
+    	    char '#' 
+    	    many (noneOf "\n") 
+    	    optional newline 
+    	    return $ Cmd { name = Str "cmnt"
+                         , args = []
+                         , inDir  = Nothing
+                         , outDir = Nothing
+                         , append = False}
+
+

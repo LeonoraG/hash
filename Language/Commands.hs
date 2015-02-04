@@ -11,20 +11,20 @@ import System.IO
 import System.Directory
 import Text.Parsec.String
 import Text.ParserCombinators.Parsec
-{-
+
 import Hexdump
 import qualified Data.ByteString.Char8 as BS
--}
+
 
 commands :: M.Map String Command
 commands =  M.fromList [ ("mv",mv), ("cp",cp), ("create", create) ,("rm",rm)
                        , ("cpdir", cpdir), ("mkdir",mkdir), ("rmdir", rmdir) 
                        , ("ls", ls), ("pwd", pwd), ("cd",cd), ("echo", echo)
-                       , ("cat", cat), ("quit", quit)]
+                       , ("cat", cat), ("cmnt", comment), ("hexdump", hexd), ("quit", quit) ]
 --  ("hexdump", hexd),
 
--- Implementations for these commands, in order of appearance :
 
+-- Implementations for these commands, in order of appearance :
 
 -- Moves one or more files/directories to given target, recursively
 
@@ -66,7 +66,7 @@ mvFileToDirectory [src, target] sstate = do
     let targetF = getFolderName src target
     copyFile src targetF
     removeFile src
-    return $ sstate { output=""}
+    return $ sstate { output = ""}
     
 mvDirectoryToDirectory :: Command
 mvDirectoryToDirectory [src, targetDir] sstate = do
@@ -198,15 +198,22 @@ cat list sstate = do
 
 cath :: FilePath -> IO String
 cath src = readFile src
-{-
--- Hexdump..
+
+-- Hexdump
+
 hexd :: Command
 hexd list sstate = do
     con <- BS.readFile (head list)
     let pretty = simpleHex con 
     putStrLn pretty
-    return sstate{output = pretty}
--}
+    return sstate { output = pretty ++ "\n" }
+
+-- Function for comments
+
+comment :: Command 
+comment _ sstate  = do 
+                    return $ sstate { output = ""}
+
 -- Exits hash
 
 quit :: Command
