@@ -128,7 +128,6 @@ realCmd = do
     spaces
     let (args', inDir', outDir', append') = handleRedirects args_
     spaces
-    --optional newline
     optional $ char ';' 
     return $ Cmd { name   = name'
                  , args   = args'
@@ -212,11 +211,45 @@ token' = (<* spaces)
 symbol :: Char -> Parser Char
 symbol = token' . char
 
+-- Parses while loop, syntax:
+-- while condition , do expression1;;expression2;, done
+
+parseWhile :: Parser While
+parseWhile = do
+    spaces
+    string "while"
+    spaces 
+    pred <- parsePred
+    spaces 
+    string ", do"
+    spaces
+    cmds <- (try parseCmd) `sepBy` (symbol ';') 
+    string ", done"
+    return $ While { wcond = pred
+                   , cmnds = cmds
+                   }
+
+-- Comments are interpreted as "empty" commands that do nothing
+-- Syntax: #comment
+
+parseComment :: Parser Cmd 
+parseComment = do
+            spaces
+    	    char '#' 
+    	    many (noneOf "\n") 
+    	    optional newline 
+    	    return $ Cmd { name = Str "cmnt"
+                         , args = []
+                         , inDir  = Nothing
+                         , outDir = Nothing
+                         , append = False 
+                         }
+
 -- Parses a top level expression, which can be either
--- conditional, or regular command
+-- comment, conditional, while loop or regular command
 
 parseTLExpr :: Parser TLExpr
-parseTLExpr =( TLCmd <$> try parseComment) <|> (TLCnd <$> try parseConditional) <|> (TLCmd <$> try parseCmd)
+parseTLExpr =( TLCmd <$> try parseComment) <|> (TLCnd <$> try parseConditional) <|> (TLWh <$> try parseWhile) <|> (TLCmd <$> try parseCmd)
 
 exprFromFile :: String -> IO (Either ParseError [Expr])
 exprFromFile fp = parseFromFile (sepBy parseExpr (many $ char ' ' <|> char '\t')) fp
@@ -226,8 +259,8 @@ tLExprsFromFile fp = parseFromFile (many $ skipMany parseComment >> parseTLExpr 
 
 parseTLExprsFromFile :: FilePath -> [String] -> IO [TLExpr]
 parseTLExprsFromFile fp args = do
-    con <- readFile fp --open the file 
-    let fline = head $ lines con --take the first line
+    con <- readFile fp 
+    let fline = head $ lines con 
     let vars = parse (endBy varExp spaces) "variables" fline 
     let (takesVars, varExprsList) = case vars of 
                      Left _  -> (False, [])
@@ -244,19 +277,5 @@ parseTLExprsFromFile fp args = do
          Right tls -> extraTL ++ tls
     
 readTLExprAndComments = endBy parseTLExpr spaces
-
--- Comments are interpreted as "empty" commands that do nothing
-
-parseComment :: Parser Cmd 
-parseComment = do
-            spaces
-    	    char '#' 
-    	    many (noneOf "\n") 
-    	    optional newline 
-    	    return $ Cmd { name = Str "cmnt"
-                         , args = []
-                         , inDir  = Nothing
-                         , outDir = Nothing
-                         , append = False}
 
 

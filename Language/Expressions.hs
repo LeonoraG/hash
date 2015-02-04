@@ -52,11 +52,17 @@ data Conditional = If { cond :: Pred -- Predicate to satisfy
                  , celse :: [Cmd] -- Actions otherwise
                  }
                    deriving Show
+                   
+-- While condition "wcond" do commands "cmnds"                 
+data While = While { wcond  :: Pred
+		   , cmnds :: [Cmd]
+		   } deriving Show
 
--- A top-level expression, wrapping either a conditional expression or a
--- command
+-- A top-level expression, wrapping either a conditional expression,
+-- while loop or a command
 data TLExpr = TLCmd Cmd
             | TLCnd Conditional
+	    | TLWh  While
               deriving Show
 
 

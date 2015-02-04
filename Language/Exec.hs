@@ -37,6 +37,7 @@ runTopLevel :: CommandTable -> TLExpr -> ScriptState -> IO ScriptState
 runTopLevel ctable tlexpr sstate  = case tlexpr of
                                         TLCmd cmd  -> evalCmd   ctable cmd  sstate 
                                         TLCnd cond -> evalCond  ctable sstate cond
+                                        TLWh  wh   -> evalWhile ctable sstate wh
                                         
 evalTLList :: CommandTable -> ScriptState -> [TLExpr] -> IO ScriptState
 evalTLList _       sstate []   = return sstate
@@ -165,3 +166,10 @@ evalCond :: CommandTable -> ScriptState -> Conditional -> IO ScriptState
 evalCond ctable sstate conditional = case conditional of
                                           If cond1 cthen1 -> evalCondIfThenElse ctable sstate (IfElse {cond = cond1, cthen=cthen1, celse = []} )
                                           IfElse cond1 cthen1 celse1 -> evalCondIfThenElse ctable sstate conditional
+                                         
+evalWhile :: CommandTable -> ScriptState -> While -> IO ScriptState
+evalWhile ctable sstate while = case evalPred (wcond while) (vartable sstate) of
+				   True ->  do
+					    newsstate <- evalCmdList ctable sstate (cmnds while)
+					    evalWhile ctable newsstate while
+				   False -> return sstate
